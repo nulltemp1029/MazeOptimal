@@ -1,4 +1,4 @@
-﻿#include <opencv2/opencv.hpp>
+#include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/core/core.hpp>
@@ -30,22 +30,24 @@ vector<vector<bool>> getArr(Mat img) {
 }
 
 struct node {
-    node* adjacents;
     int type;
-    vector<int> pos;
+    int exists = 0;
+
+    bool operator ==(const node& rhs) const 
+    {
+        return this->type == rhs.type && this->exists == rhs.exists; 
+    }
 };
 
-node genNode (node* adj, int ty, int x, int y) {
+node genNode (int ty) {
     node tNode;
-    tNode.adjacents = adj;
     tNode.type = ty;
-    vector<int> tPos = {x, y};
-    tNode.pos = tPos;
+    tNode.exists = 1;
     return tNode;
 }
 
-vector<node> getNodes(vector<vector<bool>> bArr) {
-    vector<node> nodeMap;
+map<pair<int, int>, node> getNodes(vector<vector<bool>> bArr) {
+    map<pair<int, int>, node> nodeMap;
 
     for (int i = 1; i < bArr.size() - 1; ++i) {
         for (int j = 1; j < bArr[i].size() - 1; ++j) {
@@ -62,7 +64,7 @@ vector<node> getNodes(vector<vector<bool>> bArr) {
 
                     return false;
                 }()) {
-                nodeMap.push_back(genNode(NULL, 0, i, j));
+                nodeMap[make_pair(i, j)] = genNode(0);
             }
         }
     }
@@ -70,34 +72,95 @@ vector<node> getNodes(vector<vector<bool>> bArr) {
     return nodeMap;
 }
 
-vector<node> getDeadEnds(vector<node> nodeMap, vector<vector<bool>> bArr) {
-    for (node& n : nodeMap) {
+map<pair<int, int>, node> getDeadEnds(map<pair<int, int>, node> nodeMap, vector<vector<bool>> bArr) {
+    for (auto& [k, v] : nodeMap) {
+        auto& key = k;
+        auto& value = v;
         if ([&]() -> bool {
                 int tester = 0;
-                if (bArr[n.pos[0] - 1.0][n.pos[1]]) tester++;
-                if (bArr[n.pos[0] + 1.0][n.pos[1]]) tester++;
-                if (bArr[n.pos[0]][n.pos[1] + 1.0]) tester++;
-                if (bArr[n.pos[0]][n.pos[1] - 1.0]) tester++;
+                if (bArr[key.first - 1.0][key.second]) tester++;
+                if (bArr[key.first + 1.0][key.second]) tester++;
+                if (bArr[key.first][key.second + 1.0]) tester++;
+                if (bArr[key.first][key.second - 1.0]) tester++;
 
-                if (tester == 1 && bArr[n.pos[0]][n.pos[1]]) return true;
+                if (tester == 1 && bArr[key.first][key.second]) return true;
 
                 return false;
             }()) {
-            cout << "z";
-            n.type = 1;
+            value.type = 1;
         }
     }
     return nodeMap;
 }
 
-Mat nodeImg(vector<node> nodeMap, Mat img) {
-    for (node& n : nodeMap) {
-        Vec3b& color = img.at<Vec3b>(n.pos[0], n.pos[1]);
-        if (n.type == 0) {
-            cout << "a";
+map<pair<int, int>, node> degrade(map<pair<int, int>, node> nodeMap, vector<vector<bool>>& bArr) {
+    vector<pair<int, int>> delQ;
+    vector<pair<int, int>> modQ;
+
+    auto evalDead  = [&](pair<int,int>key, int what) {
+        int tester = 0;
+        if (bArr[key.first - 1.0][key.second] && what!=0) tester++;
+        if (bArr[key.first + 1.0][key.second] && what!=1) tester++;
+        if (bArr[key.first][key.second + 1.0] && what!=2) tester++;
+        if (bArr[key.first][key.second - 1.0] && what!=3) tester++;
+
+        if (tester == 1 && bArr[key.first][key.second]) {
+            modQ.push_back(key);
+        }
+    };
+
+    //Eliminate dead ends
+    for (auto& [k, v] : nodeMap) {
+        if (v.type == 1) {
+            bArr[k.first][k.second] = false;
+            if (bArr[k.first - 1.0][k.second]) {
+                int i = k.first - 1;
+                for (; nodeMap.count(make_pair(i, k.second)) == 0 && i > 0; --i) { bArr[i][k.second] = false; }
+                evalDead(make_pair(i, k.second), 1);
+            } else if (bArr[k.first + 1.0][k.second]) {
+                int i = k.first + 1;
+                for (; nodeMap.count(make_pair(i, k.second)) == 0 && i < bArr.size()-1; ++i) { bArr[i][k.second] = false; }
+                evalDead(make_pair(i, k.second), 0);
+            } else if (bArr[k.first][k.second + 1.0]) {
+                int i = k.second + 1;
+                for (; nodeMap.count(make_pair(k.first, i)) == 0 && i < bArr.size() - 1; ++i) { bArr[k.first][i] = false; }
+                evalDead(make_pair(k.first, i), 3);
+            } else if (bArr[k.first][k.second - 1.0]) {
+                int i = k.second - 1;
+                for (; nodeMap.count(make_pair(k.first, i)) == 0 && i > 0; --i) { bArr[k.first][i] = false; }
+                evalDead(make_pair(k.first, i), 2);
+            }
+
+            //Submit node for deletion
+            delQ.push_back(k);
+        }
+    }
+
+    for (pair<int, int> p : delQ)
+        nodeMap.erase(p);
+    for (pair<int, int> p : modQ)
+        nodeMap[p].type = 1;
+
+    return nodeMap;
+}
+
+Mat nodeImg(map<pair<int, int>, node> nodeMap, vector<vector<bool>> bArr, Mat img) {
+    for (int i = 0; i < bArr.size(); ++i) {
+        for (int j = 0; j < bArr[0].size(); ++j) {
+            Vec3b& color = img.at<Vec3b>(i, j);
+            if (!bArr[i][j]) {
+                color[0] = 255; color[1] = 255; color[2] = 255;
+            } else {
+                color[0] = 0; color[1] = 0; color[2] = 0;
+            }
+        }
+    }
+
+    for (auto& [k, v] : nodeMap) {
+        Vec3b& color = img.at<Vec3b>(k.first, k.second);
+        if (v.type == 0) {
             color[0] = 255; color[1] = 0; color[2] = 255;
-        } else if (n.type == 1) {
-            cout << "b";
+        } else if (v.type == 1) {
             color[0] = 255; color[1] = 0; color[2] = 0;
         }
     }
@@ -116,18 +179,35 @@ int main()
 
     Mat img = imread(fname);
 
-    clock_t timeStart = clock();
-
     vector<vector<bool>> bVec = getArr(img);
-    vector<node> nodeMap = getNodes(bVec);
+    map<pair<int,int>,node> nodeMap = getNodes(bVec);
     nodeMap = getDeadEnds(nodeMap, bVec);
 
-    img = nodeImg(nodeMap, img);
-    imwrite(("outTemp/out" + to_string(1) + ".bmp"), img);
+    //img = nodeImg(nodeMap, img);
+    //imwrite(("outTemp/out" + to_string(0) + ".bmp"), img);
+
+    img = nodeImg(nodeMap, bVec, img);
+    imwrite(("outTemp/outfirst.bmp"), img);
+    
+    map<pair<int, int>, node> tester = {};
+
+    clock_t timeStart = clock();
+
+    int pic = 0;
+    while (nodeMap != tester) {
+        tester = nodeMap;
+        nodeMap = degrade(nodeMap, bVec);
+
+        //img = nodeImg(nodeMap, bVec, img);
+        //imwrite(("outTemp/out" + to_string(++pic) + ".bmp"), img);
+    }
 
     cout << to_string(clock() - timeStart) + " milliseconds to complete maze.\n\n";
 
-    system(("C:/Users/abc/Desktop/ffmpeg/bin/ffmpeg -start_number 0 -i C:/Users/abc/source/repos/MazeOptimal/MazeOptimal/outTemp/out%d.bmp -vf scale=" + to_string(1000) + ':' + to_string(1000) + " C:/Users/abc/source/repos/MazeOptimal/MazeOptimal/out.wmv").c_str());
+    img = nodeImg(nodeMap, bVec, img);
+    imwrite(("outTemp/out" + to_string(0) + ".bmp"), img);
+
+    //system(("C:/Users/abc/Desktop/ffmpeg/bin/ffmpeg -start_number 0 -i C:/Users/abc/source/repos/MazeOptimal/MazeOptimal/outTemp/out%d.bmp -vf scale=" + to_string(1000) + ':' + to_string(1000) + " C:/Users/abc/source/repos/MazeOptimal/MazeOptimal/out.wmv").c_str());
 
     return 0;
 }
