@@ -156,15 +156,6 @@ Mat nodeImg(map<pair<int, int>, node> nodeMap, vector<vector<bool>> bArr, Mat im
         }
     }
 
-    for (auto& [k, v] : nodeMap) {
-        Vec3b& color = img.at<Vec3b>(k.first, k.second);
-        if (v.type == 0) {
-            color[0] = 255; color[1] = 0; color[2] = 255;
-        } else if (v.type == 1) {
-            color[0] = 255; color[1] = 0; color[2] = 0;
-        }
-    }
-
     return img;
 }
 
@@ -173,39 +164,37 @@ int main()
     SetConsoleCP(437);
     SetConsoleOutputCP(437);
 
-    cout << "Maze File: ";
-    string fname;
-    cin >> fname;
 
-    Mat img = imread(fname);
+    cout << "Maze Files: ";
+    vector<string> fname;
 
-    vector<vector<bool>> bVec = getArr(img);
-    map<pair<int,int>,node> nodeMap = getNodes(bVec);
-    nodeMap = getDeadEnds(nodeMap, bVec);
-
-    //img = nodeImg(nodeMap, img);
-    //imwrite(("outTemp/out" + to_string(0) + ".bmp"), img);
-
-    img = nodeImg(nodeMap, bVec, img);
-    imwrite(("outTemp/outfirst.bmp"), img);
+    string input;
+    while ((cin >> input) && input != "end")
+        fname.push_back(input);
     
-    map<pair<int, int>, node> tester = {};
+    for (int i = 0; i < fname.size(); ++i) {
+        Mat img = imread(fname[i]);
 
-    clock_t timeStart = clock();
+        vector<vector<bool>> bVec = getArr(img);
+        map<pair<int, int>, node> nodeMap = getNodes(bVec);
+        nodeMap = getDeadEnds(nodeMap, bVec);
 
-    int pic = 0;
-    while (nodeMap != tester) {
-        tester = nodeMap;
-        nodeMap = degrade(nodeMap, bVec);
+        map<pair<int, int>, node> tester = {};
 
-        //img = nodeImg(nodeMap, bVec, img);
-        //imwrite(("outTemp/out" + to_string(++pic) + ".bmp"), img);
+        clock_t timeStart = clock();
+
+        int pic = 0;
+        while (nodeMap != tester) {
+            tester = nodeMap;
+            nodeMap = degrade(nodeMap, bVec);
+        }
+
+        cout << to_string(clock() - timeStart) + " milliseconds to complete " + fname[i] + ".\n";
+
+        img = nodeImg(nodeMap, bVec, img);
+        imwrite(("outTemp/out" + fname[i] +".bmp"), img);
     }
-
-    cout << to_string(clock() - timeStart) + " milliseconds to complete maze.\n\n";
-
-    img = nodeImg(nodeMap, bVec, img);
-    imwrite(("outTemp/out" + to_string(0) + ".bmp"), img);
+    
 
     //system(("C:/Users/abc/Desktop/ffmpeg/bin/ffmpeg -start_number 0 -i C:/Users/abc/source/repos/MazeOptimal/MazeOptimal/outTemp/out%d.bmp -vf scale=" + to_string(1000) + ':' + to_string(1000) + " C:/Users/abc/source/repos/MazeOptimal/MazeOptimal/out.wmv").c_str());
 
